@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>=VIP CRM 2026</title>
+<title>SureWin VIP CRM 2026</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -1412,44 +1412,76 @@ const GS_CONFIG = {
   enabled: false,
 };
 
-// ─── Sheets API wrapper ──────────────────────────────────────
+// ─── Sheets API wrapper (JSONP — bypasses CORS) ──────────────
 const SheetsAPI = {
-  // Generic GET
-  async get(action, sheet) {
+
+  // Core JSONP call — works from any domain without CORS issues
+  jsonp(url) {
+    return new Promise((resolve, reject) => {
+      const cb  = 'gs_cb_' + Date.now();
+      const tag = document.createElement('script');
+      const timer = setTimeout(() => {
+        delete window[cb];
+        tag.remove();
+        reject(new Error('Timeout'));
+      }, 15000);
+      window[cb] = (data) => {
+        clearTimeout(timer);
+        delete window[cb];
+        tag.remove();
+        resolve(data);
+      };
+      tag.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cb;
+      tag.onerror = () => { clearTimeout(timer); reject(new Error('Script load failed')); };
+      document.head.appendChild(tag);
+    });
+  },
+
+  async get(action, params = {}) {
     if (!GS_CONFIG.enabled || !GS_CONFIG.webAppUrl) return null;
     try {
-      const url = `${GS_CONFIG.webAppUrl}?action=${action}${sheet ? '&sheet='+sheet : ''}`;
-      const res = await fetch(url);
-      return await res.json();
-    } catch (e) {
-      console.warn('Sheets read failed:', e);
+      let url = `${GS_CONFIG.webAppUrl}?action=${action}`;
+      Object.entries(params).forEach(([k,v]) => url += `&${k}=${encodeURIComponent(v)}`);
+      const res = await this.jsonp(url);
+      return res?.data ?? res;
+    } catch(e) {
+      console.warn('Sheets GET failed:', e);
       return null;
     }
   },
 
-  // Generic POST
+  // POST via hidden form (also bypasses CORS, writes to sheet)
   async post(action, sheet, data) {
     if (!GS_CONFIG.enabled || !GS_CONFIG.webAppUrl) return null;
     try {
-      const res = await fetch(GS_CONFIG.webAppUrl, {
-        method: 'POST',
-        body: JSON.stringify({ action, sheet, data }),
-      });
-      return await res.json();
-    } catch (e) {
-      console.warn('Sheets write failed:', e);
+      // Encode as GET params for Apps Script compatibility
+      const payload = encodeURIComponent(JSON.stringify({ action, sheet, data }));
+      const url = `${GS_CONFIG.webAppUrl}?action=${action}&sheet=${sheet}&payload=${payload}`;
+      const res = await this.jsonp(url);
+      return res?.data ?? res;
+    } catch(e) {
+      console.warn('Sheets POST failed:', e);
       return null;
     }
   },
 
-  // Convenience methods
-  readSheet:   (sheet)       => SheetsAPI.get('read', sheet),
-  readAll:     ()            => SheetsAPI.get('readAll'),
-  append:      (sheet, data) => SheetsAPI.post('append', sheet, data),
-  update:      (sheet, data) => SheetsAPI.post('update', sheet, data),
-  remove:      (sheet, id)   => SheetsAPI.post('delete', sheet, { id }),
-  replaceAll:  (sheet, rows) => SheetsAPI.post('replace', sheet, rows),
+  getAllData:   ()             => SheetsAPI.get('getAllData'),
+  getLogs:     ()             => SheetsAPI.get('getLogs'),
+  getTasks:    ()             => SheetsAPI.get('getTasks'),
+  getEvents:   ()             => SheetsAPI.get('getEvents'),
+  getTags:     ()             => SheetsAPI.get('getTags'),
+  addLog:      (data)         => SheetsAPI.post('addLog',    'CRM_Contact_Log', data),
+  addTask:     (data)         => SheetsAPI.post('addTask',   'CRM_Tasks',       data),
+  addEvent:    (data)         => SheetsAPI.post('addEvent',  'CRM_Events',      data),
+  addTag:      (data)         => SheetsAPI.post('addTag',    'CRM_Tags',        data),
+  updateTask:  (id, data)     => SheetsAPI.get('updateTask',  { id, ...data }),
+  updateEvent: (id, data)     => SheetsAPI.get('updateEvent', { id, ...data }),
+  deleteLog:   (id)           => SheetsAPI.get('deleteLog',   { id }),
+  deleteTask:  (id)           => SheetsAPI.get('deleteTask',  { id }),
+  deleteEvent: (id)           => SheetsAPI.get('deleteEvent', { id }),
+  deleteTag:   (id)           => SheetsAPI.get('deleteTag',   { id }),
 };
+
 
 // ─── Load live data from Sheets on startup ───────────────────
 async function loadFromSheets() {
@@ -1457,30 +1489,28 @@ async function loadFromSheets() {
 
   showSyncBanner('⏳ Loading data from Google Sheets...');
 
-  const all = await SheetsAPI.readAll();
+  const all = await SheetsAPI.getAllData();
   if (!all || all.error) {
     showSyncBanner('⚠ Could not connect to Google Sheets. Using local data.', 'warn');
     return;
   }
 
   // Overwrite in-memory data with live Sheets data
-  if (all.contactLog?.rows?.length)  contactLog   = all.contactLog.rows.map(normaliseLog);
-  if (all.tasks?.rows?.length)       tasks        = all.tasks.rows.map(normaliseTask);
-  if (all.events?.rows?.length)      EVENTS       = all.events.rows.map(normaliseEvent);
-  if (all.tags?.rows?.length)        userTags     = all.tags.rows;
-  if (all.memberTags?.rows?.length)  {
-    memberTags = {};
-    all.memberTags.rows.forEach(r => {
+  if (all.logs?.length)        contactLog   = all.logs.map(normaliseLog);
+  if (all.tasks?.length)       tasks        = all.tasks.map(normaliseTask);
+  if (all.events?.length)      EVENTS       = all.events.map(normaliseEvent);
+  if (all.tags?.length) {
+    // Rebuild userTags and memberTags from flat tag rows
+    const tagDefs = {};
+    all.tags.forEach(r => {
+      if (r.tagId && !tagDefs[r.tagId]) {
+        tagDefs[r.tagId] = { id: r.tagId, name: r.tagName, color: r.tagColor };
+      }
       if (!memberTags[r.login]) memberTags[r.login] = [];
-      memberTags[r.login].push(r.tagId);
+      if (r.tagId && !memberTags[r.login].includes(r.tagId))
+        memberTags[r.login].push(r.tagId);
     });
-  }
-  if (all.eventMembers?.rows?.length) {
-    eventMembers = {};
-    all.eventMembers.rows.forEach(r => {
-      if (!eventMembers[r.eventId]) eventMembers[r.eventId] = {};
-      eventMembers[r.eventId][r.login] = { status: r.status };
-    });
+    if (Object.keys(tagDefs).length) userTags = Object.values(tagDefs);
   }
 
   // Re-render all pages with fresh data
@@ -1631,11 +1661,16 @@ async function testGsConnection() {
   const url = document.getElementById('gs-url-input').value.trim();
   const el  = document.getElementById('gs-test-result');
   el.textContent = '⏳ Testing...';
+  el.style.color = 'var(--text-dim)';
   try {
-    const res  = await fetch(`${url}?action=ping`);
-    const data = await res.json();
-    el.textContent  = data.ok ? '✅ Connected!' : '❌ Error: ' + data.error;
-    el.style.color  = data.ok ? '#3dba7a' : '#e05454';
+    const res = await SheetsAPI.jsonp(`${url}?action=ping`);
+    if (res && (res.success || res.ok || res.data !== undefined)) {
+      el.textContent = '✅ Connected!';
+      el.style.color = '#3dba7a';
+    } else {
+      el.textContent = '⚠ Reached — unexpected response';
+      el.style.color = '#f0c040';
+    }
   } catch (e) {
     el.textContent = '❌ Cannot reach URL';
     el.style.color = '#e05454';
