@@ -33,6 +33,10 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
 }
+body {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
 /* SIDEBAR */
 #sidebar {
   position: fixed; left: 0; top: 0; bottom: 0;
@@ -103,6 +107,9 @@ body {
   margin-left: 230px;
   min-height: 100vh;
   padding: 32px 32px 60px;
+  box-sizing: border-box;
+  width: calc(100% - 230px);
+  overflow-x: hidden;
 }
 .page { display: none; }
 .page.active { display: block; }
@@ -675,10 +682,44 @@ tbody tr.row-dormant  { background: rgba(80,80,80,0.05); }
   margin-left: auto; background: var(--bg3); border: 1px solid var(--border);
   color: var(--text-dim); padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;
 }
+
+/* ── Responsive / overflow fixes ─────────────────────── */
+* { box-sizing: border-box; }
+html { overflow-x: hidden; }
+
+/* Tables scroll horizontally on small screens */
+.card { overflow-x: auto; }
+table { min-width: 500px; }
+
+/* Stat grid falls to 2 cols on narrow screens */
+@media (max-width: 1100px) {
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .chart-grid { grid-template-columns: 1fr; }
+  .two-col    { grid-template-columns: 1fr; }
+}
+
+/* Hide sidebar on very small screens, show hamburger */
+@media (max-width: 768px) {
+  #sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.2s;
+  }
+  #sidebar.open { transform: translateX(0); }
+  #main {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding: 16px;
+  }
+  #mobile-menu-btn {
+    display: flex !important;
+  }
+}
 </style>
 </head>
 <body>
 
+<button id="mobile-menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')" 
+  style="display:none;position:fixed;top:12px;left:12px;z-index:200;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;cursor:pointer;color:var(--text);font-size:18px;align-items:center;justify-content:center">☰</button>
 <div id="sidebar">
   <div class="sidebar-logo">
     <h1>SureWin VIP</h1>
@@ -1789,8 +1830,12 @@ function tierBadge(tier) {
 function showPage(id, btn) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('page-'+id).classList.add('active');
+  const target = document.getElementById('page-'+id);
+  if (target) target.classList.add('active');
   if (btn) btn.classList.add('active');
+  const main = document.getElementById('main');
+  if (main) main.scrollTop = 0;
+  window.scrollTo(0, 0);
 }
 // ======= DASHBOARD =======
 function renderDashboard() {
