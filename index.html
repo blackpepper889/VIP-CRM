@@ -3,9 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SureWin VIP CRM 2026</title>
+<title>SW VIP CRM</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
 :root {
   --bg: #0a0a0f;
   --bg2: #11111a;
@@ -104,12 +110,15 @@ body {
 }
 /* MAIN */
 #main {
-  margin-left: 230px;
-  min-height: 100vh;
+  position: fixed;
+  left: 230px;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 32px 32px 60px;
   box-sizing: border-box;
-  width: calc(100% - 230px);
-  overflow-x: hidden;
 }
 .page { display: none; }
 .page.active { display: block; }
@@ -703,12 +712,12 @@ table { min-width: 500px; }
   #sidebar {
     transform: translateX(-100%);
     transition: transform 0.2s;
+    z-index: 150;
   }
   #sidebar.open { transform: translateX(0); }
   #main {
-    margin-left: 0 !important;
-    width: 100% !important;
-    padding: 16px;
+    left: 0 !important;
+    padding: 16px 16px 60px !important;
   }
   #mobile-menu-btn {
     display: flex !important;
@@ -722,8 +731,8 @@ table { min-width: 500px; }
   style="display:none;position:fixed;top:12px;left:12px;z-index:200;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;cursor:pointer;color:var(--text);font-size:18px;align-items:center;justify-content:center">☰</button>
 <div id="sidebar">
   <div class="sidebar-logo">
-    <h1>SureWin VIP</h1>
-    <p>CRM Dashboard 2026</p>
+    <h1>SW VIP CRM</h1>
+    <p>CRM · 2026</p>
   </div>
   <div class="nav-section">Overview</div>
   <button class="nav-btn active" onclick="showPage('dashboard',this)">
@@ -1833,9 +1842,9 @@ function showPage(id, btn) {
   const target = document.getElementById('page-'+id);
   if (target) target.classList.add('active');
   if (btn) btn.classList.add('active');
+  // Always scroll main panel back to top
   const main = document.getElementById('main');
-  if (main) main.scrollTop = 0;
-  window.scrollTo(0, 0);
+  if (main) { main.scrollTop = 0; main.scrollLeft = 0; }
 }
 // ======= DASHBOARD =======
 function renderDashboard() {
